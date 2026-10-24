@@ -8,4 +8,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Remove="Images\LC.png" />
+    <None Remove="Images\LC_QOH.png" />
+    <None Remove="Images\LOR.png" />
+    <None Remove="Images\NONE.png" />
+    <None Remove="Images\PILGRIMAGE.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Images\LC.png" />
+    <EmbeddedResource Include="Images\LC_QOH.png" />
+    <EmbeddedResource Include="Images\LOR.png" />
+    <EmbeddedResource Include="Images\NONE.png" />
+    <EmbeddedResource Include="Images\PILGRIMAGE.png" />
+  </ItemGroup>
+
 </Project>
