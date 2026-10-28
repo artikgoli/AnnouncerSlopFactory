@@ -5,7 +5,9 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Media;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -21,6 +23,7 @@ namespace AnnouncerSlopFactory
             public string DisplayName = "";
             public int Variant = 1;
             public string? AudioPath;
+            public string? CustomIconPath;
             public string? DialogueText;
 
             public string DialogueId(int announcerId) => $"{Category}_{announcerId}_{Variant}";
@@ -93,6 +96,7 @@ namespace AnnouncerSlopFactory
         private readonly List<DialogueEntry> _entries = new List<DialogueEntry>();
         private string? _iconPath;
         private string? _framePath;
+        private SoundPlayer? _currentSoundPlayer;
 
         public Form1()
         {
@@ -110,15 +114,47 @@ namespace AnnouncerSlopFactory
             chkNeglectWaiting.CheckedChanged += (s, e) => numNeglectWaiting.Enabled = chkNeglectWaiting.Checked;
             chkNeglectRandomize.CheckedChanged += (s, e) => numNeglectRandomize.Enabled = chkNeglectRandomize.Checked;
 
-            // Event hooks to update preview when dropdown changes
-            cmbWalpurgis.TextChanged += (s, e) => UpdateLivePreview();
-            cmbWalpurgis.SelectedIndexChanged += (s, e) => UpdateLivePreview();
+            cmbWalpurgis.TextChanged += (s, e) => UpdateLivePreview(null);
+            cmbWalpurgis.SelectedIndexChanged += (s, e) => UpdateLivePreview(null);
 
             _toolTip.SetToolTip(chkNeglectWaiting, "Seconds of idling before announcer_neglect can play. Default: 180.");
             _toolTip.SetToolTip(chkNeglectRandomize, "Chance (0-100%) that announcer_neglect plays. 100 = always. Default: 50.");
             _toolTip.SetToolTip(trackBarVolume, "Volume: 0 = silent, 100 = full volume.");
 
-            this.FormClosed += (s, e) => Application.Exit();
+            // Clicking anywhere else on the form de-selects the grid
+            this.MouseClick += (s, e) => { if (!dgvEntries.Bounds.Contains(PointToClient(Cursor.Position))) dgvEntries.ClearSelection(); };
+            pnlLeft.MouseClick += (s, e) => dgvEntries.ClearSelection();
+            pnlTop.MouseClick += (s, e) => dgvEntries.ClearSelection();
+            pnlBottom.MouseClick += (s, e) => dgvEntries.ClearSelection();
+            pnlRight.MouseClick += (s, e) => dgvEntries.ClearSelection();
+            dgvEntries.MouseDown += DgvEntries_MouseDown;
+            dgvEntries.Leave += (s, e) => BeginInvoke(new Action(() => dgvEntries.ClearSelection()));
+
+            this.FormClosed += (s, e) => {
+                _currentSoundPlayer?.Stop();
+                _currentSoundPlayer?.Dispose();
+                Application.Exit();
+            };
+        }
+
+        private void DgvEntries_MouseDown(object? sender, MouseEventArgs e)
+        {
+            var hit = dgvEntries.HitTest(e.X, e.Y);
+            if (hit.Type == DataGridViewHitTestType.None)
+            {
+                dgvEntries.ClearSelection();
+            }
+        }
+
+        private void PlayAudio(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return;
+
+            _currentSoundPlayer?.Stop();
+            _currentSoundPlayer?.Dispose();
+
+            _currentSoundPlayer = new SoundPlayer(filePath);
+            _currentSoundPlayer.Play();
         }
 
         private void BtnBrowseModFolder_Click(object? sender, EventArgs e)
@@ -133,7 +169,7 @@ namespace AnnouncerSlopFactory
             if (ofd.ShowDialog() != DialogResult.OK) return;
             _iconPath = ofd.FileName;
             picIcon.Image = Image.FromFile(_iconPath);
-            UpdateLivePreview();
+            UpdateLivePreview(null);
         }
 
         private void BtnSelectFrame_Click(object? sender, EventArgs e)
@@ -142,12 +178,27 @@ namespace AnnouncerSlopFactory
             if (ofd.ShowDialog() != DialogResult.OK) return;
             _framePath = ofd.FileName;
 
-            // Automatically switch the dropdown to Custom when a file is selected
             cmbWalpurgis.Text = "Custom";
-            UpdateLivePreview();
+            UpdateLivePreview(null);
         }
 
-        private void UpdateLivePreview()
+        private void DgvEntries_SelectionChanged(object? sender, EventArgs e)
+        {
+            if (dgvEntries.SelectedRows.Count > 0)
+            {
+                var row = dgvEntries.SelectedRows[0];
+                if (row.Tag is DialogueEntry entry)
+                {
+                    UpdateLivePreview(entry);
+                }
+            }
+            else
+            {
+                UpdateLivePreview(null);
+            }
+        }
+
+        private void UpdateLivePreview(DialogueEntry? selectedEntry)
         {
             picPreview.Image?.Dispose();
             picPreview.Image = null;
@@ -155,7 +206,6 @@ namespace AnnouncerSlopFactory
             Image? activeFrame = null;
             bool isCustom = cmbWalpurgis.Text.Equals("Custom", StringComparison.OrdinalIgnoreCase);
 
-            // Only use the selected file if the dropdown is actually set to "Custom"
             if (isCustom)
             {
                 if (!string.IsNullOrEmpty(_framePath) && File.Exists(_framePath))
@@ -165,18 +215,23 @@ namespace AnnouncerSlopFactory
             }
             else
             {
-                // Otherwise, load the embedded image for LOR, LC, NONE, etc.
                 activeFrame = GetEmbeddedFrame(cmbWalpurgis.Text);
+            }
+
+            string? activeIconPath = _iconPath;
+            if (selectedEntry != null && !string.IsNullOrEmpty(selectedEntry.CustomIconPath))
+            {
+                activeIconPath = selectedEntry.CustomIconPath;
             }
 
             if (activeFrame == null)
             {
-                if (!string.IsNullOrEmpty(_iconPath) && File.Exists(_iconPath))
-                    picPreview.Image = Image.FromFile(_iconPath);
+                if (!string.IsNullOrEmpty(activeIconPath) && File.Exists(activeIconPath))
+                    picPreview.Image = Image.FromFile(activeIconPath);
                 return;
             }
 
-            if (string.IsNullOrEmpty(_iconPath) || !File.Exists(_iconPath))
+            if (string.IsNullOrEmpty(activeIconPath) || !File.Exists(activeIconPath))
             {
                 picPreview.Image = activeFrame;
                 return;
@@ -184,7 +239,7 @@ namespace AnnouncerSlopFactory
 
             try
             {
-                using var icon = Image.FromFile(_iconPath);
+                using var icon = Image.FromFile(activeIconPath);
                 using var frame = new Bitmap(activeFrame);
 
                 var bmp = new Bitmap(frame.Width, frame.Height);
@@ -305,6 +360,7 @@ namespace AnnouncerSlopFactory
                 row.Cells[colAudio.Index].Value = string.IsNullOrEmpty(entry.AudioPath) ? "(no audio)" : Path.GetFileName(entry.AudioPath);
                 row.Cells[colDialogue.Index].Value = string.IsNullOrEmpty(entry.DialogueText) ? "(no text)" : entry.DialogueText.Replace("\r", "").Replace("\n", " ⏎ ");
                 row.Cells[colDelete.Index].Value = "X";
+
                 if (string.IsNullOrEmpty(entry.AudioPath)) row.Cells[colAudio.Index].Style.ForeColor = Color.Gray;
                 if (string.IsNullOrEmpty(entry.DialogueText)) row.Cells[colDialogue.Index].Style.ForeColor = Color.Gray;
             }
@@ -315,7 +371,7 @@ namespace AnnouncerSlopFactory
             using var dlg = new Form
             {
                 Text = $"Edit: {entry.DisplayName}  (variant {entry.Variant})",
-                Size = new Size(580, 360),
+                Size = new Size(580, 480),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
@@ -325,21 +381,54 @@ namespace AnnouncerSlopFactory
             };
 
             var lblAudio = new Label { Text = "Audio File:", Location = new Point(15, 18), AutoSize = true };
-            var txtAudio = new TextBox { Location = new Point(15, 40), Width = 435, ReadOnly = true, Text = entry.AudioPath ?? "" };
-            var btnBrowse = new Button { Text = "Browse...", Location = new Point(455, 38), Size = new Size(95, 26) };
+            var txtAudio = new TextBox { Location = new Point(15, 40), Width = 335, ReadOnly = true, Text = entry.AudioPath ?? "" };
+            var btnBrowse = new Button { Text = "Browse...", Location = new Point(355, 38), Size = new Size(95, 26) };
+            var btnPlayAudio = new Button { Text = "▶ Play", Location = new Point(455, 38), Size = new Size(95, 26) };
+
             btnBrowse.Click += (s, e) =>
             {
                 using var ofd = new OpenFileDialog { Filter = "WAV files|*.wav|All audio|*.wav;*.ogg;*.mp3;*.flac|All files|*.*", Title = $"Pick audio for {entry.Category}_{entry.Variant}" };
                 if (ofd.ShowDialog(dlg) == DialogResult.OK) txtAudio.Text = ofd.FileName;
             };
+            btnPlayAudio.Click += (s, e) => PlayAudio(txtAudio.Text);
 
             var lblDialogue = new Label { Text = "Dialogue Text  (\\n for newline):", Location = new Point(15, 78), AutoSize = true };
-            var txtDialogue = new TextBox { Location = new Point(15, 100), Size = new Size(535, 160), Multiline = true, ScrollBars = ScrollBars.Vertical, Text = entry.DialogueText ?? "" };
+            var txtDialogue = new TextBox { Location = new Point(15, 100), Size = new Size(535, 120), Multiline = true, ScrollBars = ScrollBars.Vertical, Text = entry.DialogueText ?? "" };
 
-            var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(385, 275), Size = new Size(80, 30) };
-            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(470, 275), Size = new Size(80, 30) };
+            var lblCustomIcon = new Label { Text = "Custom Icon (Optional):", Location = new Point(15, 235), AutoSize = true };
+            var picCustomIcon = new PictureBox { Location = new Point(15, 255), Size = new Size(60, 60), BorderStyle = BorderStyle.FixedSingle, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.FromArgb(240, 240, 240) };
+            var txtCustomIconPath = new TextBox { Location = new Point(85, 255), Width = 350, ReadOnly = true, Text = entry.CustomIconPath ?? "" };
+            var btnSelectCustomIcon = new Button { Text = "Select...", Location = new Point(85, 285), Size = new Size(95, 26) };
+            var btnClearCustomIcon = new Button { Text = "Clear", Location = new Point(185, 285), Size = new Size(95, 26) };
 
-            dlg.Controls.AddRange(new Control[] { lblAudio, txtAudio, btnBrowse, lblDialogue, txtDialogue, btnOk, btnCancel });
+            if (!string.IsNullOrEmpty(entry.CustomIconPath) && File.Exists(entry.CustomIconPath))
+                picCustomIcon.Image = Image.FromFile(entry.CustomIconPath);
+
+            btnSelectCustomIcon.Click += (s, e) =>
+            {
+                using var ofd = new OpenFileDialog { Filter = "PNG Image|*.png", Title = "Select custom icon for this line" };
+                if (ofd.ShowDialog(dlg) != DialogResult.OK) return;
+                txtCustomIconPath.Text = ofd.FileName;
+                picCustomIcon.Image?.Dispose();
+                picCustomIcon.Image = Image.FromFile(ofd.FileName);
+            };
+
+            btnClearCustomIcon.Click += (s, e) =>
+            {
+                txtCustomIconPath.Text = "";
+                picCustomIcon.Image?.Dispose();
+                picCustomIcon.Image = null;
+            };
+
+            var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(385, 400), Size = new Size(80, 30) };
+            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(470, 400), Size = new Size(80, 30) };
+
+            dlg.Controls.AddRange(new Control[] {
+                lblAudio, txtAudio, btnBrowse, btnPlayAudio,
+                lblDialogue, txtDialogue,
+                lblCustomIcon, picCustomIcon, txtCustomIconPath, btnSelectCustomIcon, btnClearCustomIcon,
+                btnOk, btnCancel
+            });
             dlg.AcceptButton = btnOk;
             dlg.CancelButton = btnCancel;
 
@@ -347,7 +436,9 @@ namespace AnnouncerSlopFactory
             {
                 entry.AudioPath = string.IsNullOrWhiteSpace(txtAudio.Text) ? null : txtAudio.Text.Trim();
                 entry.DialogueText = txtDialogue.Text;
+                entry.CustomIconPath = string.IsNullOrWhiteSpace(txtCustomIconPath.Text) ? null : txtCustomIconPath.Text.Trim();
                 RefreshGrid();
+                UpdateLivePreview(entry);
             }
         }
 
@@ -355,6 +446,7 @@ namespace AnnouncerSlopFactory
         {
             if (MessageBox.Show("Clear all fields and dialogue entries?", "Reset", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
+            _currentSoundPlayer?.Stop();
             txtModFolder.Clear(); txtModName.Clear(); txtDisplayName.Clear();
             numAnnouncerId.Value = 9901; cmbWalpurgis.Text = "LOR"; numBaseId.Value = 0;
             trackBarVolume.Value = 100;
@@ -362,6 +454,14 @@ namespace AnnouncerSlopFactory
             picIcon.Image = null; _iconPath = null;
             _framePath = null; picPreview.Image = null;
             _entries.Clear(); RefreshGrid(); lblStatus.Text = "Ready";
+        }
+
+        private string GetMD5Hash(string filePath)
+        {
+            using var md5 = MD5.Create();
+            using var stream = File.OpenRead(filePath);
+            var hash = md5.ComputeHash(stream);
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
         }
 
         private void BtnExport_Click(object? sender, EventArgs e)
@@ -428,13 +528,43 @@ namespace AnnouncerSlopFactory
                 if (!string.IsNullOrEmpty(_iconPath) && File.Exists(_iconPath))
                     File.Copy(_iconPath, Path.Combine(basePath, modName + "_icon.png"), true);
 
-                // Only copy the overlay file if the dropdown is set to Custom
                 if (!string.IsNullOrEmpty(_framePath) && File.Exists(_framePath) && walpurgis.Equals("Custom", StringComparison.OrdinalIgnoreCase))
                 {
                     File.Copy(_framePath, Path.Combine(basePath, modName + "_overlay.png"), true);
                 }
 
-                var dialogueOutput = new { dataList = filled.Select(x => new { id = x.DialogueId(announcerId), dlg = x.DialogueText ?? "" }).ToList() };
+                // MD5 Deduplication Logic for Custom Icons
+                var iconHashes = new Dictionary<string, string>();
+                int iconCounter = 1;
+                var dialogueList = new List<object>();
+
+                foreach (var entry in filled)
+                {
+                    string? entryImgStr = null;
+
+                    if (!string.IsNullOrEmpty(entry.CustomIconPath) && File.Exists(entry.CustomIconPath))
+                    {
+                        string hash = GetMD5Hash(entry.CustomIconPath);
+                        if (!iconHashes.ContainsKey(hash))
+                        {
+                            string newFileName = $"{modName}_icon_{iconCounter++}";
+                            File.Copy(entry.CustomIconPath, Path.Combine(basePath, newFileName + ".png"), true);
+                            iconHashes[hash] = newFileName;
+                        }
+                        entryImgStr = iconHashes[hash];
+                    }
+
+                    if (entryImgStr != null)
+                    {
+                        dialogueList.Add(new { id = entry.DialogueId(announcerId), dlg = entry.DialogueText ?? "", imgStr = entryImgStr });
+                    }
+                    else
+                    {
+                        dialogueList.Add(new { id = entry.DialogueId(announcerId), dlg = entry.DialogueText ?? "" });
+                    }
+                }
+
+                var dialogueOutput = new { dataList = dialogueList };
                 File.WriteAllText(Path.Combine(basePath, "Dialogue", "EN.json"), JsonSerializer.Serialize(dialogueOutput, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
 
                 int copied = 0;
@@ -465,6 +595,10 @@ namespace AnnouncerSlopFactory
             if (cmbWalpurgis.Text.Equals("Custom", StringComparison.OrdinalIgnoreCase))
                 sb.AppendLine($"  ├── {modName}_overlay.png (frame)");
 
+            int customIcons = filled.Count(x => !string.IsNullOrEmpty(x.CustomIconPath));
+            if (customIcons > 0)
+                sb.AppendLine($"  ├── {modName}_icon_*.png (custom line icons)");
+
             sb.AppendLine($"  ├── Dialogue\\");
             sb.AppendLine($"  │   └── EN.json              ({filled.Count} entries)");
             sb.AppendLine($"  └── Voice\\");
@@ -477,6 +611,7 @@ namespace AnnouncerSlopFactory
             sb.AppendLine($"  • Announcer ID:     {announcerId}");
             sb.AppendLine($"  • Dialogue entries: {filled.Count}");
             sb.AppendLine($"  • Audio files:      {withAudio.Count}");
+            sb.AppendLine($"  • Custom Icons:     {customIcons}");
             sb.AppendLine($"  • Volume:           {(volume == 100 ? "100 (default)" : volume.ToString())}");
             sb.AppendLine($"  • Tape Overlay:     {(string.IsNullOrWhiteSpace(cmbWalpurgis.Text) ? "(default)" : cmbWalpurgis.Text)}");
 
@@ -501,11 +636,6 @@ namespace AnnouncerSlopFactory
             dlg.Controls.Add(pnlBody); dlg.Controls.Add(pnlButtons);
             dlg.AcceptButton = btnOk; dlg.CancelButton = btnCancel;
             return dlg.ShowDialog(this) == DialogResult.OK;
-        }
-
-        private void Form1_Load(object sender, EventArgs e)
-        {
-
         }
     }
 }

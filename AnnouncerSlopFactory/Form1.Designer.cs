@@ -104,13 +104,13 @@
             txtModFolder.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             txtModFolder.Location = new Point(95, 14);
             txtModFolder.Name = "txtModFolder";
-            txtModFolder.Size = new Size(906, 23);
+            txtModFolder.Size = new Size(907, 23);
             txtModFolder.TabIndex = 1;
             // 
             // btnBrowseModFolder
             // 
             btnBrowseModFolder.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowseModFolder.Location = new Point(1007, 12);
+            btnBrowseModFolder.Location = new Point(1008, 12);
             btnBrowseModFolder.Name = "btnBrowseModFolder";
             btnBrowseModFolder.Size = new Size(80, 25);
             btnBrowseModFolder.TabIndex = 2;
@@ -153,7 +153,7 @@
             // btnExport
             // 
             btnExport.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnExport.Location = new Point(967, 10);
+            btnExport.Location = new Point(968, 10);
             btnExport.Name = "btnExport";
             btnExport.Size = new Size(120, 32);
             btnExport.TabIndex = 2;
@@ -362,7 +362,7 @@
             // lblWalpurgis
             // 
             lblWalpurgis.AutoSize = true;
-            lblWalpurgis.Location = new Point(159, 336);
+            lblWalpurgis.Location = new Point(159, 354);
             lblWalpurgis.Name = "lblWalpurgis";
             lblWalpurgis.Size = new Size(75, 15);
             lblWalpurgis.TabIndex = 6;
@@ -371,7 +371,7 @@
             // cmbWalpurgis
             // 
             cmbWalpurgis.Items.AddRange(new object[] { "NONE", "LC", "LOR", "LC_QOH", "PILGRIMAGE", "Custom" });
-            cmbWalpurgis.Location = new Point(159, 354);
+            cmbWalpurgis.Location = new Point(159, 377);
             cmbWalpurgis.Name = "cmbWalpurgis";
             cmbWalpurgis.Size = new Size(217, 23);
             cmbWalpurgis.TabIndex = 7;
@@ -409,9 +409,9 @@
             lblLivePreview.AutoSize = true;
             lblLivePreview.Location = new Point(15, 512);
             lblLivePreview.Name = "lblLivePreview";
-            lblLivePreview.Size = new Size(51, 15);
+            lblLivePreview.Size = new Size(154, 15);
             lblLivePreview.TabIndex = 22;
-            lblLivePreview.Text = "Preview:";
+            lblLivePreview.Text = "Live Preview (Custom only):";
             // 
             // picPreview
             // 
@@ -469,6 +469,7 @@
             dgvEntries.Size = new Size(664, 710);
             dgvEntries.TabIndex = 0;
             dgvEntries.CellContentClick += DgvEntries_CellContentClick;
+            dgvEntries.SelectionChanged += DgvEntries_SelectionChanged;
             // 
             // colCategory
             // 
@@ -492,7 +493,7 @@
             colAudio.HeaderText = "Audio";
             colAudio.Name = "colAudio";
             colAudio.ReadOnly = true;
-            colAudio.Width = 160;
+            colAudio.Width = 170;
             // 
             // colDialogue
             // 
@@ -521,7 +522,7 @@
             // 
             // btnAddDialogue
             // 
-            btnAddDialogue.Location = new Point(10, 6);
+            btnAddDialogue.Location = new Point(0, 7);
             btnAddDialogue.Name = "btnAddDialogue";
             btnAddDialogue.Size = new Size(150, 28);
             btnAddDialogue.TabIndex = 0;
@@ -557,7 +558,6 @@
             Name = "Form1";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Announcer Slop Factory";
-            Load += Form1_Load;
             pnlTop.ResumeLayout(false);
             pnlTop.PerformLayout();
             pnlBottom.ResumeLayout(false);
